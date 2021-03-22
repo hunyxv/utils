@@ -15,7 +15,7 @@ import (
 var id uint64
 
 var (
-	ErrClose error = errors.New("The WheelTimer has stopped")
+	ErrClose error = errors.New("the WheelTimer has stopped")
 )
 
 // Logger is used for logging formatted messages.
@@ -116,7 +116,7 @@ func newTimeout(task TimerTask, round, bucket int) *Timeout {
 
 func (t *Timeout) isTime() bool {
 	t.round--
-	return t.round <= 0
+	return t.round < 0
 }
 
 func (t *Timeout) Status() TimeoutStatus {
@@ -296,7 +296,9 @@ func (hwt *HashedWheelTimer) Start() {
 					}); err != nil {
 						hwt.logger.Printf("[ERROR]:[PoolSubmit]: %s", err.Error())
 					}
+					continue
 				}
+				i++
 			}
 			hwt.timingWheel = hwt.timingWheel.next
 			hwt.tick = hwt.timingWheel.no
