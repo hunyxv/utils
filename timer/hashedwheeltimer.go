@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hunyxv/utils/spinlock"
 	"github.com/panjf2000/ants/v2"
 )
 
@@ -163,9 +164,10 @@ type HashedWheelTimer struct {
 	tick          int
 	logger        Logger
 
-	mux   *sync.Mutex
-	close bool
-	ch    chan struct{}
+	mux      *sync.Mutex
+	spinLock sync.Locker
+	close    bool
+	ch       chan struct{}
 }
 
 func NewHashedWheelTimer(options ...Option) (*HashedWheelTimer, error) {
@@ -208,6 +210,7 @@ func NewHashedWheelTimer(options ...Option) (*HashedWheelTimer, error) {
 		tick:          0,
 		logger:        opts.Logger,
 		mux:           new(sync.Mutex),
+		spinLock:      spinlock.NewSpinLock(),
 		ch:            make(chan struct{}),
 	}, nil
 }
@@ -217,13 +220,11 @@ func (hwt *HashedWheelTimer) Submit(after time.Duration, task TimerTask) (Timeou
 		return nil, ErrClose
 	}
 
-	hwt.mux.Lock()
-	defer hwt.mux.Unlock()
-
 	tmp := int(after/hwt.tickDuration) + hwt.tick
 	timeout := newTimeout(task, tmp/hwt.ticksPerWheel, tmp%hwt.ticksPerWheel)
-
+	hwt.mux.Lock()
 	hwt.newTasksQ[timeout.bucket] = append(hwt.newTasksQ[timeout.bucket], timeout)
+	defer hwt.mux.Unlock()
 	timeout.status = Waiting
 	if len(hwt.newTasksQ[timeout.bucket]) > 1000 {
 		hwt.logger.Printf("WARNING: the task queue length is greater than 1000")
@@ -232,10 +233,12 @@ func (hwt *HashedWheelTimer) Submit(after time.Duration, task TimerTask) (Timeou
 }
 
 func (hwt *HashedWheelTimer) Cancel(timeout Timeouter) {
-	hwt.mux.Lock()
-	defer hwt.mux.Unlock()
 	if timeout.Status() == Waiting {
-		hwt.cancelTasksQ.Store(timeout.ID(), struct{}{})
+		hwt.spinLock.Lock()
+		defer hwt.spinLock.Unlock()
+		if timeout.Status() == Waiting {
+			hwt.cancelTasksQ.Store(timeout.ID(), struct{}{})
+		}
 	}
 }
 
@@ -265,11 +268,15 @@ func (hwt *HashedWheelTimer) Start() {
 					if timerTask.task.NeedCancel() {
 						hwt.workPool.Submit(timerTask.task.Cancel)
 					}
+					hwt.spinLock.Lock()
 					timerTask.status = Cancel
+					hwt.spinLock.Unlock()
 					continue
 				}
 				if timerTask.isTime() {
+					hwt.spinLock.Lock()
 					timerTask.status = Runing
+					hwt.spinLock.Unlock()
 					hwt.timingWheel.tasks[i] = hwt.timingWheel.tasks[len(hwt.timingWheel.tasks)-1]
 					hwt.timingWheel.tasks[len(hwt.timingWheel.tasks)-1] = nil
 					hwt.timingWheel.tasks = hwt.timingWheel.tasks[:len(hwt.timingWheel.tasks)-1]
@@ -281,7 +288,9 @@ func (hwt *HashedWheelTimer) Start() {
 								timerTask.task.Exception(errors.New(strerr))
 								return
 							}
+							hwt.spinLock.Lock()
 							timerTask.status = Done
+							hwt.spinLock.Unlock()
 						}()
 						timerTask.task.Run()
 					}); err != nil {
