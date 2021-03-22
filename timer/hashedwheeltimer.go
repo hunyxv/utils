@@ -78,16 +78,52 @@ func WithLogger(logger Logger) Option {
 	}
 }
 
+type Timeouter interface {
+	isTime() bool
+	Status() TimeoutStatus
+	ID() uint64
+}
+
+type TimeoutStatus int
+
+const (
+	_                     = iota
+	Waiting TimeoutStatus = iota
+	Runing
+	Cancel
+	Done
+)
+
+var _ Timeouter = (*Timeout)(nil)
+
 type Timeout struct {
 	id     uint64
 	task   TimerTask
 	round  int
 	bucket int
+	status TimeoutStatus
+}
+
+func newTimeout(task TimerTask, round, bucket int) *Timeout {
+	return &Timeout{
+		id:     atomic.AddUint64(&id, 1),
+		task:   task,
+		round:  round,
+		bucket: bucket,
+	}
 }
 
 func (t *Timeout) isTime() bool {
 	t.round--
 	return t.round <= 0
+}
+
+func (t *Timeout) Status() TimeoutStatus {
+	return t.status
+}
+
+func (t *Timeout) ID() uint64 {
+	return t.id
 }
 
 // func (t *Timeout) cancel() {
@@ -176,32 +212,31 @@ func NewHashedWheelTimer(options ...Option) (*HashedWheelTimer, error) {
 	}, nil
 }
 
-func (hwt *HashedWheelTimer) Submit(after time.Duration, task TimerTask) (timerid uint64, err error) {
+func (hwt *HashedWheelTimer) Submit(after time.Duration, task TimerTask) (Timeouter, error) {
 	if hwt.close {
-		return 0, ErrClose
+		return nil, ErrClose
 	}
 
-	timerid = atomic.AddUint64(&id, 1)
 	hwt.mux.Lock()
 	defer hwt.mux.Unlock()
 
 	tmp := int(after/hwt.tickDuration) + hwt.tick
-	timeout := &Timeout{
-		id:     timerid,
-		task:   task,
-		round:  tmp / hwt.ticksPerWheel,
-		bucket: tmp % hwt.ticksPerWheel,
-	}
+	timeout := newTimeout(task, tmp/hwt.ticksPerWheel, tmp%hwt.ticksPerWheel)
 
 	hwt.newTasksQ[timeout.bucket] = append(hwt.newTasksQ[timeout.bucket], timeout)
+	timeout.status = Waiting
 	if len(hwt.newTasksQ[timeout.bucket]) > 1000 {
 		hwt.logger.Printf("WARNING: the task queue length is greater than 1000")
 	}
-	return
+	return timeout, nil
 }
 
-func (hwt *HashedWheelTimer) Cancel(timerid uint64) {
-	hwt.cancelTasksQ.Store(timerid, struct{}{})
+func (hwt *HashedWheelTimer) Cancel(timeout Timeouter) {
+	hwt.mux.Lock()
+	defer hwt.mux.Unlock()
+	if timeout.Status() == Waiting {
+		hwt.cancelTasksQ.Store(timeout.ID(), struct{}{})
+	}
 }
 
 func (hwt *HashedWheelTimer) Start() {
@@ -230,9 +265,11 @@ func (hwt *HashedWheelTimer) Start() {
 					if timerTask.task.NeedCancel() {
 						hwt.workPool.Submit(timerTask.task.Cancel)
 					}
+					timerTask.status = Cancel
 					continue
 				}
 				if timerTask.isTime() {
+					timerTask.status = Runing
 					hwt.timingWheel.tasks[i] = hwt.timingWheel.tasks[len(hwt.timingWheel.tasks)-1]
 					hwt.timingWheel.tasks[len(hwt.timingWheel.tasks)-1] = nil
 					hwt.timingWheel.tasks = hwt.timingWheel.tasks[:len(hwt.timingWheel.tasks)-1]
@@ -242,7 +279,9 @@ func (hwt *HashedWheelTimer) Start() {
 								strerr := r.(string)
 								hwt.logger.Printf("[ERROR]:[timeTask]: %s", strerr)
 								timerTask.task.Exception(errors.New(strerr))
+								return
 							}
+							timerTask.status = Done
 						}()
 						timerTask.task.Run()
 					}); err != nil {
