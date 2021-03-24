@@ -41,7 +41,7 @@ type Options struct {
 	// 一个 bucket 代表的时间，默认为 100ms
 	TickDuration time.Duration
 	// 一轮含有多少个 bucket ，默认为 512 个
-	TicksPerWheel int
+	TicksPerWheel int32
 	// 同时在运行的定时任务数量
 	WorkPoolSize int
 	// 清除pool中过期的 work 任务
@@ -55,7 +55,7 @@ func WithTickDuration(tickDuration time.Duration) Option {
 	}
 }
 
-func WithTicksPerWheel(ticksPerWheel int) Option {
+func WithTicksPerWheel(ticksPerWheel int32) Option {
 	return func(opts *Options) {
 		opts.TicksPerWheel = ticksPerWheel
 	}
@@ -100,12 +100,12 @@ var _ Timeouter = (*Timeout)(nil)
 type Timeout struct {
 	id     uint64
 	task   TimerTask
-	round  int
-	bucket int
+	round  int32
+	bucket int32
 	status TimeoutStatus
 }
 
-func newTimeout(task TimerTask, round, bucket int) *Timeout {
+func newTimeout(task TimerTask, round, bucket int32) *Timeout {
 	return &Timeout{
 		id:     atomic.AddUint64(&id, 1),
 		task:   task,
@@ -132,7 +132,7 @@ func (t *Timeout) ID() uint64 {
 // }
 
 type TimingWheel struct {
-	no    int
+	no    int32
 	tasks []*Timeout
 	next  *TimingWheel
 }
@@ -156,12 +156,12 @@ func insertCircleNode(head *TimingWheel, newNode *TimingWheel) {
 
 type HashedWheelTimer struct {
 	tickDuration  time.Duration
-	ticksPerWheel int
+	ticksPerWheel int32
 	workPool      *ants.Pool
-	newTasksQ     map[int][]*Timeout
+	newTasksQ     map[int32][]*Timeout
 	cancelTasksQ  sync.Map
 	timingWheel   *TimingWheel
-	tick          int
+	tick          int32
 	logger        Logger
 
 	mux      *sync.Mutex
@@ -189,9 +189,9 @@ func NewHashedWheelTimer(options ...Option) (*HashedWheelTimer, error) {
 	}
 
 	timingWheel := new(TimingWheel)
-	taskQ := make(map[int][]*Timeout)
+	taskQ := make(map[int32][]*Timeout)
 
-	for i := 0; i < opts.TicksPerWheel; i++ {
+	for i := int32(0); i < opts.TicksPerWheel; i++ {
 		insertCircleNode(timingWheel, &TimingWheel{
 			no:    i,
 			tasks: make([]*Timeout, 0),
@@ -220,7 +220,8 @@ func (hwt *HashedWheelTimer) Submit(after time.Duration, task TimerTask) (Timeou
 		return nil, ErrClose
 	}
 
-	tmp := int(after/hwt.tickDuration) + hwt.tick
+	tick := atomic.LoadInt32(&(hwt.tick))
+	tmp := int32(int(after/hwt.tickDuration) + int(tick))
 	timeout := newTimeout(task, tmp/hwt.ticksPerWheel, tmp%hwt.ticksPerWheel)
 	hwt.mux.Lock()
 	hwt.newTasksQ[timeout.bucket] = append(hwt.newTasksQ[timeout.bucket], timeout)
