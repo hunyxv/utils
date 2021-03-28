@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 var _ TimerTask = (*task)(nil)
@@ -51,6 +53,25 @@ func TestSubmit(t *testing.T) {
 	t.Logf("task status: %d", timeout.Status())
 }
 
+func TestExecuteAt(t *testing.T) {
+	timer, err := NewHashedWheelTimer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go timer.Start()
+	defer timer.Stop()
+
+	aftertime := time.Now().Add(time.Second * 5)
+	atask := &task{t: t, startTime: time.Now(), after: 5 * time.Millisecond}
+	timeout, err := timer.ExecuteAt(aftertime, atask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("task id: %d, aftertime: %s", timeout.ID(), aftertime.Format("2006/01/02 15:04:05"))
+	time.Sleep(time.Second * 6)
+	t.Logf("task status: %d", timeout.Status())
+}
+
 func TestCancel(t *testing.T) {
 	timer, err := NewHashedWheelTimer()
 	if err != nil {
@@ -83,6 +104,28 @@ func TestSubmitMuch(t *testing.T) {
 	rand.New(rand.NewSource(time.Now().UnixNano()))
 	var max time.Duration
 	for i := 0; i < 100; i++ {
+		after := time.Second * time.Duration(rand.Intn(200))
+		task := &task{t: t, needCancel: true, startTime: time.Now(), after: after}
+		if after > max {
+			max = after
+		}
+		timer.Submit(after, task)
+	}
+
+	time.Sleep(max + time.Second)
+}
+
+func TestSubmitN(t *testing.T) {
+	timer, err := NewHashedWheelTimer(WithTicksPerWheel(1), WithLogger(zap.NewExample()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	go timer.Start()
+	defer timer.Stop()
+
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	var max time.Duration
+	for i := 0; i < 2000000; i++ {
 		after := time.Second * time.Duration(rand.Intn(200))
 		task := &task{t: t, needCancel: true, startTime: time.Now(), after: after}
 		if after > max {
