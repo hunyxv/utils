@@ -75,6 +75,7 @@ func WithLogger(logger *zap.Logger) Option {
 type Timeouter interface {
 	isTime() bool
 	Status() TimeoutStatus
+	Cancel()
 	ID() uint64
 }
 
@@ -121,6 +122,10 @@ func (t *Timeout) Status() TimeoutStatus {
 	return t.status
 }
 
+func (t *Timeout) Cancel() {
+	t.setStatus(Cancel)
+}
+
 func (t *Timeout) setStatus(status TimeoutStatus) {
 	t.spinLock.Lock()
 	t.status = status
@@ -159,7 +164,6 @@ type HashedWheelTimer struct {
 	ticksPerWheel int32
 	workPool      *ants.Pool
 	newTasksQ     map[int32][]*Timeout
-	cancelTasksQ  sync.Map
 	timingWheel   *TimingWheel
 	tick          int32
 	logger        *zap.Logger
@@ -204,7 +208,6 @@ func NewHashedWheelTimer(options ...Option) (*HashedWheelTimer, error) {
 		ticksPerWheel: opts.TicksPerWheel,
 		workPool:      workPool,
 		newTasksQ:     taskQ,
-		cancelTasksQ:  sync.Map{},
 		timingWheel:   timingWheel,
 		tick:          0,
 		logger:        opts.Logger,
@@ -235,14 +238,6 @@ func (hwt *HashedWheelTimer) ExecuteAt(t time.Time, task TimerTask) (Timeouter, 
 	return hwt.Submit(time.Until(t), task)
 }
 
-func (hwt *HashedWheelTimer) Cancel(timeout Timeouter) {
-	if timeout.Status() == Waiting {
-		if timeout.Status() == Waiting {
-			hwt.cancelTasksQ.Store(timeout.ID(), struct{}{})
-		}
-	}
-}
-
 func (hwt *HashedWheelTimer) Start() {
 	ticker := time.NewTicker(hwt.tickDuration)
 	defer ticker.Stop()
@@ -262,17 +257,16 @@ func (hwt *HashedWheelTimer) Start() {
 			for i := 0; i < len(hwt.timingWheel.tasks); {
 				timerTask := hwt.timingWheel.tasks[i]
 
-				if _, loaded := hwt.cancelTasksQ.LoadAndDelete(timerTask.id); loaded {
+				if timerTask.Status() == Cancel {
 					hwt.timingWheel.tasks[i] = hwt.timingWheel.tasks[len(hwt.timingWheel.tasks)-1]
 					hwt.timingWheel.tasks[len(hwt.timingWheel.tasks)-1] = nil
 					hwt.timingWheel.tasks = hwt.timingWheel.tasks[:len(hwt.timingWheel.tasks)-1]
-
 					if timerTask.task.NeedCancel() {
 						hwt.workPool.Submit(timerTask.task.Cancel)
 					}
-					timerTask.setStatus(Cancel)
 					continue
 				}
+
 				if timerTask.isTime() {
 					timerTask.setStatus(Running)
 					hwt.timingWheel.tasks[i] = hwt.timingWheel.tasks[len(hwt.timingWheel.tasks)-1]

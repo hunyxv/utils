@@ -88,7 +88,7 @@ func TestCancel(t *testing.T) {
 	}
 	t.Logf("task id: %d", timeout.ID())
 	time.Sleep(time.Second * 2)
-	timer.Cancel(timeout)
+	timeout.Cancel()
 	time.Sleep(time.Second * 7)
 	t.Logf("task status: %d", timeout.Status())
 }
