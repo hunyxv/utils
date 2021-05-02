@@ -148,14 +148,18 @@ func NewSubscribePublish(options ...Option) *SubscribePublish {
 
 // Publish 发布 event， timeout 若为0则阻塞至消息发出
 func (sp *SubscribePublish) Publish(event Event, timeout time.Duration) (ok bool) {
+	defer func() {
+		if e := recover(); e != nil {
+			ok = false
+		}
+	}()
+
 	if sp.closed {
 		return false
 	}
 
-	sp.mux.Lock()
-	defer sp.mux.Unlock()
 	_, ok = sp.topicHandler[event.Topic]
-	if ok && !sp.closed {
+	if ok {
 		if timeout <= 0 {
 			sp.eventChan <- event
 		} else {
@@ -201,8 +205,6 @@ func (sp *SubscribePublish) CancelSubscribe(handleID handleID) {
 }
 
 func (sp *SubscribePublish) Stop() {
-	sp.mux.Lock()
-	defer sp.mux.Unlock()
 	if sp.closed {
 		return
 	}
