@@ -28,7 +28,6 @@ const (
 	_StatusDoReqErr = -500
 )
 
-
 // TODO retry的code不一定正确，缺失或者多余待实际使用中修改。
 func shouldRetry(ctx context.Context, httpCode int) bool {
 	select {
@@ -218,7 +217,6 @@ func PostJSON(url string, raw json.RawMessage, options ...Option) (body []byte, 
 	err = errors.Errorf("%s %s still fails after %d retries", http.MethodPost, url, retryTimes)
 	return
 }
-
 
 func doHTTP(ctx context.Context, method, url string, header map[string][]string, payload []byte, opt *option) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(payload))
