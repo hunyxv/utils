@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"crypto/tls"
 	"net/http"
 	"sync"
 	"time"
@@ -20,11 +21,12 @@ var (
 type Option func(*option)
 
 type option struct {
-	ttl        time.Duration
-	header     http.Header
-	logger     *zap.Logger
-	retryTimes int
-	retryDelay time.Duration
+	ttl             time.Duration
+	header          http.Header
+	logger          *zap.Logger
+	retryTimes      int
+	retryDelay      time.Duration
+	tlsClientConfig *tls.Config
 }
 
 func (o *option) reset() {

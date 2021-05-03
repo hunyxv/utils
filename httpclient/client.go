@@ -224,8 +224,18 @@ func doHTTP(ctx context.Context, method, url string, header map[string][]string,
 		return nil, -1, errors.Wrapf(err, "new request %s %s err", method, url)
 	}
 
+	var resp *http.Response
 	req.Header = opt.header
-	resp, err := http.DefaultClient.Do(req)
+	if opt.tlsClientConfig != nil {
+		c := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: opt.tlsClientConfig,
+			},
+		}
+		resp, err = c.Do(req)
+	} else {
+		resp, err = http.DefaultClient.Do(req)
+	}
 	if err != nil {
 		err = errors.Wrapf(err, "do request %s %s err", method, url)
 
