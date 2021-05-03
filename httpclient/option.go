@@ -80,3 +80,10 @@ func WithRetryDelay(retryDelay time.Duration) Option {
 		opt.retryDelay = retryDelay
 	}
 }
+
+// WithTLSClientConfig add RootCAs
+func WithTLSClientConfig(config *tls.Config) Option {
+	return func(opt *option) {
+		opt.tlsClientConfig = config
+	}
+}
