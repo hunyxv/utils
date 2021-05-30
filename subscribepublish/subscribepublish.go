@@ -263,5 +263,8 @@ func (sp *SubscribePublish) Stop() {
 	sp.closed = true
 	sp.cancel()
 	close(sp.eventChan)
+	for _, h := range sp.handleList {
+		h.cancel()
+	}
 	sp.workPool.Release()
 }
