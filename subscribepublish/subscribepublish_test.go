@@ -64,3 +64,44 @@ func TestPublishClosed(t *testing.T) {
 	}
 	time.Sleep(2 * time.Second)
 }
+
+func TestPublishWithChan(t *testing.T) {
+	sp := NewSubscribePublish(WithLogger(zap.NewExample()))
+
+	c1, _ := sp.SubscribeTopicWithChan("test", 0)
+	c2, _ := sp.SubscribeTopicWithChan("test", 1)
+	ok := sp.Publish(Event{Topic: "test", Value: "12345"}, 0)
+	t.Log(ok)
+
+	v1 := <-c1
+	t.Log(v1)
+	v2 := <-c2
+	t.Log(v2)
+
+	time.Sleep(time.Second)
+	sp.Stop()
+}
+
+func TestCancelSubscribeWithChan(t *testing.T) {
+	sp := NewSubscribePublish(WithLogger(zap.NewExample()))
+
+	c1, hid1 := sp.SubscribeTopicWithChan("test", 0)
+	c2, hid2 := sp.SubscribeTopicWithChan("test", 1)
+	ok := sp.Publish(Event{Topic: "test", Value: "12345"}, 0)
+	t.Log(ok)
+
+	ticker := time.NewTicker(time.Second * 2)
+	for {
+		select {
+		case v := <-c1:
+			t.Log(v)
+		case v := <-c2:
+			t.Log(v)
+		case <- ticker.C:
+			sp.CancelSubscribe(hid1)
+			sp.CancelSubscribe(hid2)
+			sp.Stop()
+			return
+		}
+	}
+}

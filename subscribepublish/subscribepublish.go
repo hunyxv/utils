@@ -35,11 +35,48 @@ type Event struct {
 	Value interface{} // 内容
 }
 
-type (
-	Handler func(interface{})
+type Handler interface {
+	handle(interface{})
+	cancel()
+}
 
-	Option func(opts *option)
-)
+var _ Handler = HandlerFunc(nil)
+
+type HandlerFunc func(interface{})
+
+func (h HandlerFunc) handle(v interface{}) { h(v) }
+func (HandlerFunc) cancel() {}
+
+var _ Handler = (*handerChan)(nil)
+
+type handerChan struct {
+	c     chan Event
+	topic string
+}
+
+func newHanderChan(topic string, size int) *handerChan {
+	if size < 0 {
+		size = 0
+	}
+	hander := &handerChan{
+		c:     make(chan Event, size),
+		topic: topic,
+	}
+	return hander
+}
+
+func (h *handerChan) handle(v interface{}) {
+	event := Event{Topic: h.topic, Value: v}
+	h.c <- event
+}
+
+func (h *handerChan) cancel() {
+	close(h.c)
+	fmt.Println("----close chan")
+}
+
+type Option func(opts *option)
+
 type option struct {
 	QueueSize int
 	// 同时在运行的定时任务数量
@@ -133,7 +170,7 @@ func NewSubscribePublish(options ...Option) *SubscribePublish {
 						handler := sp.handleList[hid]
 						sp.workPool.Submit(
 							func() {
-								handler(value)
+								handler.handle(value)
 							},
 						)
 					}
@@ -177,7 +214,8 @@ func (sp *SubscribePublish) Publish(event Event, timeout time.Duration) (ok bool
 	return
 }
 
-func (sp *SubscribePublish) SubscribeTopic(topic string, handler Handler) handleID {
+// SubscribeTopic 订阅 Topic
+func (sp *SubscribePublish) SubscribeTopic(topic string, handler HandlerFunc) handleID {
 	hid := nextID()
 	sp.mux.Lock()
 	defer sp.mux.Unlock()
@@ -185,6 +223,18 @@ func (sp *SubscribePublish) SubscribeTopic(topic string, handler Handler) handle
 	sp.topicHandler[topic] = append(sp.topicHandler[topic], hid)
 	sp.handleList[hid] = handler
 	return handleID(hid)
+}
+
+// SubscribeTopicWithChan 通过 chan 订阅 topic
+func (sp *SubscribePublish) SubscribeTopicWithChan(topic string, size int) (<-chan Event, handleID) {
+	h := newHanderChan(topic, size)
+	hid := nextID()
+
+	sp.mux.Lock()
+	defer sp.mux.Unlock()
+	sp.topicHandler[topic] = append(sp.topicHandler[topic], hid)
+	sp.handleList[hid] = h
+	return h.c, handleID(hid)
 }
 
 func (sp *SubscribePublish) CancelSubscribe(handleID handleID) {
@@ -201,7 +251,10 @@ func (sp *SubscribePublish) CancelSubscribe(handleID handleID) {
 		}
 		break
 	}
-	delete(sp.handleList, hid)
+	if handle, ok := sp.handleList[hid]; ok {
+		delete(sp.handleList, hid)
+		handle.cancel()
+	}
 }
 
 func (sp *SubscribePublish) Stop() {
