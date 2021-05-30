@@ -47,30 +47,30 @@ type HandlerFunc func(interface{})
 func (h HandlerFunc) handle(v interface{}) { h(v) }
 func (HandlerFunc) cancel()                {}
 
-var _ Handler = (*handerChan)(nil)
+var _ Handler = (*handlerChan)(nil)
 
-type handerChan struct {
+type handlerChan struct {
 	c     chan Event
 	topic string
 }
 
-func newHanderChan(topic string, size int) *handerChan {
+func newHandlerChan(topic string, size int) *handlerChan {
 	if size < 0 {
 		size = 0
 	}
-	hander := &handerChan{
+	handle := &handlerChan{
 		c:     make(chan Event, size),
 		topic: topic,
 	}
-	return hander
+	return handle
 }
 
-func (h *handerChan) handle(v interface{}) {
+func (h *handlerChan) handle(v interface{}) {
 	event := Event{Topic: h.topic, Value: v}
 	h.c <- event
 }
 
-func (h *handerChan) cancel() {
+func (h *handlerChan) cancel() {
 	close(h.c)
 }
 
@@ -226,7 +226,7 @@ func (sp *SubscribePublish) SubscribeTopic(topic string, handler HandlerFunc) ha
 
 // SubscribeTopicWithChan 通过 chan 订阅 topic
 func (sp *SubscribePublish) SubscribeTopicWithChan(topic string, size int) (<-chan Event, handleID) {
-	h := newHanderChan(topic, size)
+	h := newHandlerChan(topic, size)
 	hid := nextID()
 
 	sp.mux.Lock()
