@@ -45,7 +45,7 @@ var _ Handler = HandlerFunc(nil)
 type HandlerFunc func(interface{})
 
 func (h HandlerFunc) handle(v interface{}) { h(v) }
-func (HandlerFunc) cancel() {}
+func (HandlerFunc) cancel()                {}
 
 var _ Handler = (*handerChan)(nil)
 
@@ -72,7 +72,6 @@ func (h *handerChan) handle(v interface{}) {
 
 func (h *handerChan) cancel() {
 	close(h.c)
-	fmt.Println("----close chan")
 }
 
 type Option func(opts *option)
