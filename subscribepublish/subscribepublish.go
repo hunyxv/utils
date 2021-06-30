@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hunyxv/utils/spinlock"
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
 )
@@ -117,7 +116,7 @@ type SubscribePublish struct {
 	opts         *option
 	closed       bool
 
-	mux    sync.Locker
+	mux    sync.RWMutex
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -149,7 +148,6 @@ func NewSubscribePublish(options ...Option) *SubscribePublish {
 		workPool:     workPool,
 		opts:         opts,
 
-		mux:    spinlock.NewSpinLock(),
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -162,8 +160,8 @@ func NewSubscribePublish(options ...Option) *SubscribePublish {
 				sp.opts.Logger.Info("NewSubscribePublish|Stop")
 				return
 			case event := <-sp.eventChan:
+				sp.mux.Lock()
 				if hs, ok := sp.topicHandler[event.Topic]; ok {
-					sp.mux.Lock()
 					for _, hid := range hs {
 						value := event.Value
 						handler := sp.handleList[hid]
@@ -173,8 +171,8 @@ func NewSubscribePublish(options ...Option) *SubscribePublish {
 							},
 						)
 					}
-					sp.mux.Unlock()
 				}
+				sp.mux.Unlock()
 			}
 		}
 	}()
@@ -194,6 +192,8 @@ func (sp *SubscribePublish) Publish(event Event, timeout time.Duration) (ok bool
 		return false
 	}
 
+	sp.mux.RLock()
+	defer sp.mux.RUnlock()
 	_, ok = sp.topicHandler[event.Topic]
 	if ok {
 		if timeout <= 0 {
