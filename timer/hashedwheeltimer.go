@@ -37,7 +37,7 @@ type Options struct {
 	TicksPerWheel int32
 	// 同时在运行的定时任务数量
 	WorkPoolSize int
-	// 清除pool中过期的 work 任务
+	// 清除pool中空闲 WorkTimeout 时间的 groutine
 	WorkTimeout time.Duration
 	Logger      *zap.Logger
 }
