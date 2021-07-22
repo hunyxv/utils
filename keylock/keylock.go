@@ -23,10 +23,12 @@ func (sl *singlelock) lock() bool {
 		}
 		runtime.Gosched()
 	}
+	sl.t = time.Now().UnixNano()
 	return true
 }
 
 func (sl *singlelock) unlock() {
+	sl.t = time.Now().UnixNano()
 	atomic.StoreUint32(&(sl.flag), 0)
 }
 
@@ -45,14 +47,16 @@ func (sl *singlelock) mark() bool {
 type KeyLock struct {
 	m       map[string]*singlelock
 	ctx     context.Context
+	idle    int64
 	rwmutex sync.RWMutex
 }
 
-// NewKeyLock .
-func NewKeyLock(ctx context.Context) *KeyLock {
+// NewKeyLock idle 为锁空闲时长
+func NewKeyLock(ctx context.Context, idle time.Duration) *KeyLock {
 	kl := &KeyLock{
-		m:   make(map[string]*singlelock, 100),
-		ctx: ctx,
+		m:    make(map[string]*singlelock, 100),
+		idle: int64(idle),
+		ctx:  ctx,
 	}
 
 	go func() {
@@ -67,7 +71,7 @@ func NewKeyLock(ctx context.Context) *KeyLock {
 				now := time.Now().UnixNano()
 				kl.rwmutex.Lock()
 				for k, l := range kl.m {
-					if now-l.t > int64(10*time.Minute) {
+					if now-l.t > kl.idle {
 						// 标记失败，跳过清除操作
 						if !l.mark() {
 							continue

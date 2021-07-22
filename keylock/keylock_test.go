@@ -38,7 +38,7 @@ func BenchmarkLock(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	kl := NewKeyLock(ctx)
+	kl := NewKeyLock(ctx, time.Minute)
 
 	keys := make([]string, 0, 10000)
 	for i := 0; i < 10000; i++ {
@@ -60,7 +60,7 @@ func TestLock(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	kl := NewKeyLock(ctx)
+	kl := NewKeyLock(ctx, time.Minute)
 
 	key := string(randomString(32))
 	kl.Lock(key)
