@@ -21,8 +21,8 @@ type Hook interface {
 }
 
 type hook struct {
-	ctx    chan os.Signal
-	hadles []func()
+	ctx      chan os.Signal
+	handlers []func()
 }
 
 // NewHook create a Hook instance
@@ -44,12 +44,12 @@ func (h *hook) WithSignals(signals ...syscall.Signal) {
 }
 
 func (h *hook) Add(f func()) {
-	h.hadles = append(h.hadles, f)
+	h.handlers = append([]func(){f}, h.handlers...)
 }
 
 func (h *hook) WatchSignal() {
 	<-h.ctx
-	for _, h := range h.hadles {
-		h()
+	for _, handler := range h.handlers {
+		handler()
 	}
 }

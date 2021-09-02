@@ -8,7 +8,7 @@ import (
 type Server struct{}
 
 func (s *Server) Close() {
-	log.Fatal("shutting down")
+	log.Println("shutting down")
 }
 
 func TestShutdown(t *testing.T) {
