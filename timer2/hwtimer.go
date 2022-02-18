@@ -328,16 +328,18 @@ func (hwt *hashedWheelTimer) ExecuteAt(t time.Time, task func()) TimerTask {
 func (hwt *hashedWheelTimer) submitTask(tt *timerTask) {
 	watchHand := atomic.LoadUint32(&(hwt.watchHand))
 	totalSpan := uint32(tt.delayTime/hwt.tick) + watchHand
-	node := hwt.timingWheel
 	round := totalSpan / hwt.ticksPerWheel + 1
 	bucket := totalSpan % hwt.ticksPerWheel
 	tt.round = round
 	tt.bucket = bucket
+
+	node := hwt.timingWheel
 	for i := uint32(0); i < hwt.ticksPerWheel; i++ {
 		if node.i == bucket {
 			node.insertTask(tt)
 			break
 		}
+		node = node.next
 	}
 }
 

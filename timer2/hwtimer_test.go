@@ -19,7 +19,9 @@ func TestTimerWheel(t *testing.T) {
 	tt := timer.Submit(3 * time.Second, func() {
 		t.Log("timer task ", time.Now())
 	})
+	time.Sleep(time.Second)
+	tt.Reset()
 	t.Log(tt.TID())
 
-	time.Sleep(4 * time.Second + 100 * time.Millisecond)
+	time.Sleep(5 * time.Second + 200 * time.Millisecond)
 }
