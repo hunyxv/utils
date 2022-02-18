@@ -435,9 +435,9 @@ func (hwt *hashedWheelTimer) Start() {
 			return
 		case <-tick.C:
 			hwt.mutex.Lock()
+			atomic.StoreUint32(&hwt.watchHand, hwt.timingWheel.next.i)
 			go hwt.timingWheel.Range(hwt.runTask)
 			hwt.timingWheel = hwt.timingWheel.next
-			atomic.StoreUint32(&hwt.watchHand, hwt.timingWheel.i)
 			hwt.mutex.Unlock()
 		}
 	}
