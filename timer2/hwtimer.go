@@ -386,7 +386,7 @@ func (hwt *hashedWheelTimer) Start() {
 		case <-tick.C:
 			hwt.timingWheel = hwt.timingWheel.next
 			atomic.StoreUint32(&hwt.watchHand, hwt.timingWheel.i)
-			hwt.timingWheel.Range(hwt.runTask)
+			go hwt.timingWheel.Range(hwt.runTask)
 		}
 	}
 }
