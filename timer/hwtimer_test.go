@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/panjf2000/ants/v2"
 )
 
 func TestTimerWheel(t *testing.T) {
@@ -63,21 +65,25 @@ func TestTimerWheel0(t *testing.T) {
 }
 
 func TestTimerN(t *testing.T) {
-	timer, err := NewHashedWheelTimer(context.Background())
+	gpool, _ := ants.NewPool(100000, ants.WithNonblocking(true))
+	timer, err := NewHashedWheelTimer(context.Background(), WithWorkPool(gpool))
 	if err != nil {
 		t.Fatal(err)
 	}
 	go timer.Start()
 	defer timer.Stop()
 
-	tasks := []TimerTask{}
+	m := map[uint64]TimerTask{}
 
+	tasks := []TimerTask{}
+	now := time.Now()
 	for i := 0; i < 100000; i++ {
 		n := rand.Intn(20000)
 		task := timer.Submit(time.Duration(n)*time.Millisecond, func() {
-			t.Logf("[%s]: %ds", time.Now(), n)
+			//	t.Logf("[%s]: %dms", time.Now(), n)
 		})
 		tasks = append(tasks, task)
+		m[task.TID()] = task
 	}
 
 	for {
@@ -92,9 +98,16 @@ func TestTimerN(t *testing.T) {
 			i++
 		}
 		if len(tasks) == 0 {
+			t.Log("End: ", time.Since(now))
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
-	t.Log("End.")
+
+	for _, task := range m {
+		if task.ExecutionTime().Sub(task.ExpirationTime()) > time.Second {
+			t.Log(task.ExecutionTime().Sub(task.ExpirationTime()))
+		}
+	}
+
 }
