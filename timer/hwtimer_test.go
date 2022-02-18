@@ -77,10 +77,10 @@ func TestTimerN(t *testing.T) {
 
 	tasks := []TimerTask{}
 	now := time.Now()
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 200000; i++ {
 		n := rand.Intn(20000)
 		task := timer.Submit(time.Duration(n)*time.Millisecond, func() {
-				t.Logf("[%s]: %dms", time.Now(), n)
+				//t.Logf("[%s]: %dms", time.Now(), n)
 		})
 		tasks = append(tasks, task)
 		m[task.TID()] = task

@@ -321,12 +321,13 @@ func NewHashedWheelTimer(pctx context.Context, opts ...Option) (*hashedWheelTime
 // Submit 提交延时任务
 func (hwt *hashedWheelTimer) Submit(after time.Duration, task func()) TimerTask {
 	var tt *timerTask
+	hwt.mutex.RLock()
+	defer hwt.mutex.RUnlock()
 	watchHand := atomic.LoadUint32(&(hwt.watchHand))
+
 	if after == 0 {
 		tt = newTimerTask(task, 1, watchHand, after, hwt)
-		hwt.mutex.RLock()
 		hwt.timingWheel.insertTask(tt)
-		hwt.mutex.RUnlock()
 		return tt
 	}
 	totalSpan := uint32(after/hwt.tick) + watchHand
@@ -334,9 +335,7 @@ func (hwt *hashedWheelTimer) Submit(after time.Duration, task func()) TimerTask 
 	round := totalSpan/hwt.ticksPerWheel + 1
 	bucket := totalSpan % hwt.ticksPerWheel
 
-	hwt.mutex.RLock()
 	node := hwt.timingWheel
-	hwt.mutex.RUnlock()
 	for i := uint32(0); i < hwt.ticksPerWheel; i++ {
 		if node.i == bucket {
 			tt = newTimerTask(task, round, bucket, after, hwt)
@@ -361,9 +360,7 @@ func (hwt *hashedWheelTimer) submitTask(tt *timerTask) {
 	tt.round = round
 	tt.bucket = bucket
 
-	hwt.mutex.RLock()
-	node := hwt.timingWheel
-	hwt.mutex.RUnlock()	
+	node := hwt.getTimingWheel()
 	for i := uint32(0); i < hwt.ticksPerWheel; i++ {
 		if node.i == bucket {
 			node.insertTask(tt)
@@ -374,9 +371,7 @@ func (hwt *hashedWheelTimer) submitTask(tt *timerTask) {
 }
 
 func (hwt *hashedWheelTimer) cancelTask(tt *timerTask) bool {
-	hwt.mutex.RLock()
-	node := hwt.timingWheel
-	hwt.mutex.RUnlock()
+	node := hwt.getTimingWheel()
 	for i := uint32(0); i < hwt.ticksPerWheel; i++ {
 		if node.i == tt.bucketID() {
 			if _tt := node.removeTask(tt.TID()); _tt != nil {
@@ -392,9 +387,7 @@ func (hwt *hashedWheelTimer) cancelTask(tt *timerTask) bool {
 
 // CancelTaskByID 根据任务ID取消
 func (hwt *hashedWheelTimer) CancelTaskByID(tid uint64) bool {
-	hwt.mutex.RLock()
-	node := hwt.timingWheel
-	hwt.mutex.RUnlock()
+	node := hwt.getTimingWheel()
 	for i := uint32(0); i < hwt.ticksPerWheel; i++ {
 		if tt := node.removeTask(tid); tt != nil {
 			tt.setTaskStatus(Cancel)
@@ -407,9 +400,7 @@ func (hwt *hashedWheelTimer) CancelTaskByID(tid uint64) bool {
 
 // FindTaskByID 根据任务id返回任务本体
 func (hwt *hashedWheelTimer) FindTaskByID(tid uint64) TimerTask {
-	hwt.mutex.RLock()
-	node := hwt.timingWheel
-	hwt.mutex.RUnlock()
+	node := hwt.getTimingWheel()
 	for i := uint32(0); i < hwt.ticksPerWheel; i++ {
 		if tt := node.findTaskByID(tid); tt != nil {
 			return tt
@@ -417,6 +408,12 @@ func (hwt *hashedWheelTimer) FindTaskByID(tid uint64) TimerTask {
 		node = node.next
 	}
 	return nil
+}
+
+func (hwt *hashedWheelTimer) getTimingWheel() *timingWheel {
+	hwt.mutex.RLock()
+	defer hwt.mutex.RUnlock()
+	return hwt.timingWheel
 }
 
 func (hwt *hashedWheelTimer) runTask(t *timerTask) {
@@ -435,7 +432,8 @@ func (hwt *hashedWheelTimer) Start() {
 			return
 		case <-tick.C:
 			hwt.mutex.Lock()
-			atomic.StoreUint32(&hwt.watchHand, hwt.timingWheel.next.i)
+			// atomic.StoreUint32(&hwt.watchHand, hwt.timingWheel.next.i)
+			hwt.watchHand = hwt.timingWheel.next.i
 			go hwt.timingWheel.Range(hwt.runTask)
 			hwt.timingWheel = hwt.timingWheel.next
 			hwt.mutex.Unlock()
