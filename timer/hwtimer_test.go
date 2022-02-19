@@ -80,7 +80,7 @@ func TestTimerN(t *testing.T) {
 	for i := 0; i < 200000; i++ {
 		n := rand.Intn(20000)
 		task := timer.Submit(time.Duration(n)*time.Millisecond, func() {
-				//t.Logf("[%s]: %dms", time.Now(), n)
+			//t.Logf("[%s]: %dms", time.Now(), n)
 		})
 		tasks = append(tasks, task)
 		m[task.TID()] = task
@@ -101,11 +101,11 @@ func TestTimerN(t *testing.T) {
 			t.Log("End: ", time.Since(now))
 			break
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(90 * time.Millisecond)
 	}
 
 	for _, task := range m {
-		if task.ExecutionTime().Sub(task.ExpirationTime()) > 200 * time.Millisecond {
+		if task.ExecutionTime().Sub(task.ExpirationTime()) > 200*time.Millisecond || task.ExecutionTime().Sub(task.ExpirationTime()) < -200*time.Millisecond {
 			t.Log(task.ExecutionTime().Sub(task.ExpirationTime()))
 		}
 	}

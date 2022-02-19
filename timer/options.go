@@ -12,7 +12,7 @@ type Options struct {
 	// TickDuration 一个 bucket 的时间跨度，默认为 100ms
 	TickDuration time.Duration
 	// TicksPerWheel 一轮含有多少个 bucket ，默认为 512 个
-	TicksPerWheel uint32
+	TicksPerWheel int32
 	// WorkPool 工作池
 	WorkPool *ants.Pool
 }
@@ -25,7 +25,7 @@ func WithTickDuration(tickDuration time.Duration) Option {
 }
 
 // WithTicksPerWheel 设置时间轮刻度数量
-func WithTicksPerWheel(ticksPerWheel uint32) Option {
+func WithTicksPerWheel(ticksPerWheel int32) Option {
 	return func(opts *Options) {
 		opts.TicksPerWheel = ticksPerWheel
 	}
