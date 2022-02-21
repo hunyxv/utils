@@ -68,10 +68,10 @@ type timerTask struct {
 	expirationTime time.Time
 	executionTime  time.Time
 	delayTime      time.Duration
-	hwt            *hashedWheelTimer
+	hwt            *HashedWheelTimer
 }
 
-func newTimerTask(task func(), round, bucket int32, delayTime time.Duration, hwt *hashedWheelTimer) *timerTask {
+func newTimerTask(task func(), round, bucket int32, delayTime time.Duration, hwt *HashedWheelTimer) *timerTask {
 	expir := time.Now().Add(delayTime)
 	return &timerTask{
 		id:             atomic.AddUint64(&taskID, 1),
@@ -268,7 +268,7 @@ func insertCircleNode(head *timingWheel, newNode *timingWheel) {
 	newNode.next = head
 }
 
-type hashedWheelTimer struct {
+type HashedWheelTimer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	mutex  sync.RWMutex
@@ -280,7 +280,7 @@ type hashedWheelTimer struct {
 	watchHand     int32         // 表针
 }
 
-func NewHashedWheelTimer(pctx context.Context, opts ...Option) (*hashedWheelTimer, error) {
+func NewHashedWheelTimer(pctx context.Context, opts ...Option) (*HashedWheelTimer, error) {
 	defaultOpts := &Options{
 		TickDuration:  100 * time.Millisecond,
 		TicksPerWheel: 512,
@@ -306,7 +306,7 @@ func NewHashedWheelTimer(pctx context.Context, opts ...Option) (*hashedWheelTime
 	}
 
 	ctx, cancel := context.WithCancel(pctx)
-	return &hashedWheelTimer{
+	return &HashedWheelTimer{
 		ctx:    ctx,
 		cancel: cancel,
 
@@ -319,7 +319,7 @@ func NewHashedWheelTimer(pctx context.Context, opts ...Option) (*hashedWheelTime
 }
 
 // Submit 提交延时任务
-func (hwt *hashedWheelTimer) Submit(after time.Duration, task func()) TimerTask {
+func (hwt *HashedWheelTimer) Submit(after time.Duration, task func()) TimerTask {
 	//var tt *timerTask
 	hwt.mutex.RLock()
 	defer hwt.mutex.RUnlock()
@@ -340,11 +340,11 @@ func (hwt *hashedWheelTimer) Submit(after time.Duration, task func()) TimerTask 
 }
 
 // ExecuteAt 在指定时间执行任务
-func (hwt *hashedWheelTimer) ExecuteAt(t time.Time, task func()) TimerTask {
+func (hwt *HashedWheelTimer) ExecuteAt(t time.Time, task func()) TimerTask {
 	return hwt.Submit(time.Until(t), task)
 }
 
-func (hwt *hashedWheelTimer) submitTask(tt *timerTask) {
+func (hwt *HashedWheelTimer) submitTask(tt *timerTask) {
 	watchHand := atomic.LoadInt32(&(hwt.watchHand))
 	totalSpan := int32(tt.delayTime / hwt.tick)
 	round := totalSpan / hwt.ticksPerWheel
@@ -362,7 +362,7 @@ func (hwt *hashedWheelTimer) submitTask(tt *timerTask) {
 	}
 }
 
-func (hwt *hashedWheelTimer) cancelTask(tt *timerTask) bool {
+func (hwt *HashedWheelTimer) cancelTask(tt *timerTask) bool {
 	node := hwt.getTimingWheel()
 	for i := int32(0); i < hwt.ticksPerWheel; i++ {
 		if node.i == tt.bucketID() {
@@ -378,7 +378,7 @@ func (hwt *hashedWheelTimer) cancelTask(tt *timerTask) bool {
 }
 
 // CancelTaskByID 根据任务ID取消
-func (hwt *hashedWheelTimer) CancelTaskByID(tid uint64) bool {
+func (hwt *HashedWheelTimer) CancelTaskByID(tid uint64) bool {
 	node := hwt.getTimingWheel()
 	for i := int32(0); i < hwt.ticksPerWheel; i++ {
 		if tt := node.removeTask(tid); tt != nil {
@@ -391,7 +391,7 @@ func (hwt *hashedWheelTimer) CancelTaskByID(tid uint64) bool {
 }
 
 // FindTaskByID 根据任务id返回任务本体
-func (hwt *hashedWheelTimer) FindTaskByID(tid uint64) TimerTask {
+func (hwt *HashedWheelTimer) FindTaskByID(tid uint64) TimerTask {
 	node := hwt.getTimingWheel()
 	for i := int32(0); i < hwt.ticksPerWheel; i++ {
 		if tt := node.findTaskByID(tid); tt != nil {
@@ -402,19 +402,19 @@ func (hwt *hashedWheelTimer) FindTaskByID(tid uint64) TimerTask {
 	return nil
 }
 
-func (hwt *hashedWheelTimer) getTimingWheel() *timingWheel {
+func (hwt *HashedWheelTimer) getTimingWheel() *timingWheel {
 	hwt.mutex.RLock()
 	defer hwt.mutex.RUnlock()
 	return hwt.timingWheel
 }
 
-func (hwt *hashedWheelTimer) runTask(t *timerTask) {
+func (hwt *HashedWheelTimer) runTask(t *timerTask) {
 	if err := hwt.gpool.Submit(t.Run); err != nil {
 		log.Printf("gpool submit task failed: %v", err)
 	}
 }
 
-func (hwt *hashedWheelTimer) Start() {
+func (hwt *HashedWheelTimer) Start() {
 	tick := time.NewTicker(hwt.tick)
 	defer tick.Stop()
 
@@ -432,6 +432,6 @@ func (hwt *hashedWheelTimer) Start() {
 	}
 }
 
-func (hwt *hashedWheelTimer) Stop() {
+func (hwt *HashedWheelTimer) Stop() {
 	hwt.cancel()
 }
